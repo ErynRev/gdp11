@@ -1,0 +1,10 @@
+What coding software do we need to use?
+-- Arduino uses its own based on C/C++
+
+Either use the Arduino App ,, save oyour work ,, then upload it as a new file (edits can be pushed separately),
+--
+
+Or use a codespace on here (or Vscode equivalent apps) - this will require you to download the extension on the codespace --- Arduino by moozzyk
+
+
+If you need help, please ask, ill try reply as quickly as possible:D 
