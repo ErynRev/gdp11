@@ -31,6 +31,7 @@ Modified by Eryn
 
 File datalog;
 
+
 //Set Slave Select Pin
 //MOSI, MISO, CLK are handeled automatically
 int CSN = 10;
