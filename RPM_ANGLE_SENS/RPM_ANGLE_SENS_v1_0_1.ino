@@ -41,7 +41,7 @@ int CLK = 13 ;
 unsigned int angle;
 
 void setup() {
-    A7AA-4FEE
+  // A7AA-4FEE
   Serial.begin(9600);
 
   //Set Pin Modes
@@ -88,3 +88,9 @@ void loop() {
   delay(1000);
 
 }
+
+
+
+// CONTROL METHOD
+
+/*

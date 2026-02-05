@@ -50,13 +50,14 @@ int CLK = 13 ;
 // Number of Props used 
 // int n = 2;
 
+
 int CSN[2] = {10, 14};
 int SO[2] = {12, 16};
 int SI[2] = {11, 15};
 int CLK[2] = {13, 17};
 
 
-unsigned int angle;
+unsigned int angle[2];
 
 void setup() {
   //A7AA-4FEE
@@ -86,7 +87,7 @@ void loop() {
 
   SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE1));
   int pos[2];
-  int angle[2];
+ 
   
   //Send the Command Frame
   for(int i = 0; i < 2; i++) {
@@ -113,7 +114,7 @@ void loop() {
     %%
 
     %%
-    pos[i] = ( (unsigned long) angle)*360UL/16384UL;
+    pos[i] = ( (unsigned long) angle[i])*360UL/16384UL;
     %%
 
     Serial.println(pos[i]);
@@ -123,3 +124,5 @@ void loop() {
   delay(1000);
 
 }
+
+
