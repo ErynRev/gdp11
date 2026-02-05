@@ -64,22 +64,14 @@ void setup() {
 
 }
 
-
-
-
-
-
-
-
-
-
-int main (void) {
+void loop() {
     
-    while(){//motor is running -- PWM[0] is above a certain rpm
 
-        for(int i = 1; i<2; i++) {
-        
+    for(int i = 1; i<2; i++) {
+    
+        while( rpm[0] <  1250) { // check rpm is atleast above a certain value first
             while(rpm[i] < (rpm[0] - 30) && rpm[i] > (rpm[0] + 30)) {
+                print()
                 // slow down the motor using esc code
                 // Change PWM SENSOR SIGNAL - Servo.write()
                 // can we look at arduino code? - this is gonna be on there
@@ -94,15 +86,16 @@ int main (void) {
                     
                 }
                 
-                if(rpm[i] > (rpm[0] + 30)) {
+                else if(rpm[i] > (rpm[0] + 30)) {
                     PWM[i] -= 10; 
                 }
+
 
             }
 
 
-
         }
+    
     }
 
 
