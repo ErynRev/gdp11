@@ -89,9 +89,9 @@ void loop() {
   int pos[2];
  
   
-  //Send the Command Frame
+  
   for(int i = 0; i < 2; i++) {
-
+    //Send the Command Frame
     digitalWrite(CSN[i], LOW);
     delayMicroseconds(1);
     SPI.transfer16(0xFFFF);
@@ -101,21 +101,21 @@ void loop() {
     digitalWrite(CSN[i], LOW);
     delayMicroseconds(1);
 
-    %%
+    
     angle[i] = SPI.transfer16(0xC000);
-    %%
+    
 
     digitalWrite(CSN[i], HIGH);
   
     SPI.endTransaction();
   
-    %%
+  
     angle[i] = (angle[i] & (0x3FFF));
-    %%
+    
 
-    %%
+    
     pos[i] = ( (unsigned long) angle[i])*360UL/16384UL;
-    %%
+    
 
     Serial.println(pos[i]);
     datalog.println(pos[i], angle[i]);

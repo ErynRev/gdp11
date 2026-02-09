@@ -1,9 +1,18 @@
+/* 
+Just gonna run through this code and explain what it does and if it will work successfully using %
+*/
+
+
 #include <SPI.h>
 #include <Servo.h>
 
 // -------------------- USER CONFIG --------------------
 // Encoder CS pins (shared SPI bus)
-constexpr uint8_t CS_M1 = 10;
+// % This should work but also for ease maybe reference where to put the other pins then can be easily replicated
+// in fairness can be done in a different doc ( plus each pin should nbe explained)
+
+
+constexpr uint8_t CS_M1 = 10;  
 constexpr uint8_t CS_M2 = 9;
 
 // ESC signal pins
@@ -11,18 +20,19 @@ constexpr uint8_t ESC1_PIN = 2;   // Motor 1 = reference (master)
 constexpr uint8_t ESC2_PIN = 3;   // Motor 2 = follower
 
 // ESC pulse limits
-constexpr int ESC_MIN_US = 1000;
-constexpr int ESC_MAX_US = 2000;
+constexpr int ESC_MIN_US = 1000;  // % why? is this just a guess from the LLM? Also what is this? not explained
+constexpr int ESC_MAX_US = 2000;  
 
 // Base throttle applied to Motor 1 (open-loop)
-volatile int baseThrottleUs = 1200;
+volatile int baseThrottleUs = 1200;   // % I assume this is same as ESC, this would require changing the code each time?
+                                      // % can we make it so we can input from the serial monitor
 
 // Loop period
 constexpr uint32_t CONTROL_PERIOD_US = 2000; // 500 Hz
 
 // SPI settings for AS5147P
 constexpr uint32_t SPI_HZ   = 1000000;  // start 1 MHz
-constexpr uint8_t  SPI_MODE = SPI_MODE1;
+constexpr uint8_t  SPI_MODE = SPI_MODE1;   // % 
 
 // -------------------- SPEED (Stage 1) --------------------
 // Speed PI for Motor 2 to match Motor 1 RPM
