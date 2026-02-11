@@ -40,7 +40,7 @@ void add_prop(Prop* p, int CSN, int PWM, int phase, unsigned int rpm, unsigned i
     for(int i = 0; i < 3; i++) {
         p->RPMreadings[i] = RPMreadings[i];
     }
-    p->grad = grad
+    p->grad = grad;
     
 }
 
@@ -111,10 +111,10 @@ unsigned int AverageRPM(Prop* p, int CSN) {
 
 
 
-unsigned int ESCtoRPM_readings(Prop* p, int CSN, int PWM, int PWMVal) { // Returns RPMreading for each prop and PWMValue
+unsigned int PWMtoRPM_readings(Prop* p, int CSN, int PWM, int PWMVal) { // Returns RPMreading for each prop and PWMValue
     // This converts the ESC to RPM using the readings of the specific Motor
-    // Initialises at 3 points to get a rough linear approximation for the ESC to RPM
-    // Take three Throttle values between 1000 and 2000 (min and max PWM for )
+    // Initialises at 3 points to get a rough linear approximation for the PWM to RPM
+    // Take three Throttle values between 1000 and 2000 (assumed min and max PWM for this motor, typical for industry)
     
     // Using values 1200, 1500, 1800
     
@@ -129,16 +129,39 @@ unsigned int ESCtoRPM_readings(Prop* p, int CSN, int PWM, int PWMVal) { // Retur
 
 }
 
+int PWM_RPMgradient(Prop* p, int PWMVals[3], int RPMVals[3]){
+    int grad = 0;
+    for(int i = 0; i < 2; i++){
+        grad += ((RPMVals[i+1])-(RPMVals[i]))/((PWMVals[i+1])-(PWMVals[i]));
+    }
+    return grad/2;
 
-unsigned int ESCfromRPM(Prop* p, int CSN, int PWM, int grad){
+}
+
+
+unsigned int PWMfromRPM(Prop* p, int CSN, int PWM, int RPM, int gradient){
     /* This function will call the RPM readings and PWMVals used to create a correlation between them.
     By doing this we are assuming that it is a linear Correlation between the RPM and PWM.
     From just checking it seems like the case with a few outliers, but either way this should give
     a base value that we can then edit to get the right amount later in the Feedback Loop program.
     */
-    // The Gradient is worked out in the Setup Fn
-    
+    // The Gradient is worked out in Setup using equation above
+    int PWMValue = 0;
+    // We assume x intercept is at 1000 with this set up, No power should not Spin the RPM,- No power is at 1000
+    // So y = 0 at x = 1000, then using grad, yintercept C:
+    int yintercept = 0 - (1000 * gradient);
 
+    // Now we have the full linear equation y = mx + C
+
+    PWMValue = gradient * RPM + yintercept;
+    
+    if(!(PWMValue > 1000 && PWMValue < 2000)){
+        Serial.println("PWM Value not calculated correctly, please check code");
+        return 0;
+    }
+    else {
+        return PWMValue; // Value outputted should be between 1000 and 2000
+    }
 }
 
 void setup() {
@@ -154,7 +177,6 @@ void setup() {
 
     // SETUP Pins
 
-    
     for(int i = 0; i < 2; i++) {
         //Set Pin Modes
         pinMode(props[i].CSN, OUTPUT);
@@ -168,21 +190,21 @@ void setup() {
     SPI.begin();
     //Initialise SD Card
     SD.begin();
-
+    // Make Data file if not already existing not done yet
     SD.exists("datalog.txt");
     //datalog = SD.open("datalog.txt", FILE_WRITE);
     
-    // Initialise RPM and ESC Conversion for Calc later
-    Serial.println("Initialisation is now running. Please don't adjust anything.")
+    // Initialise RPM and PWM Conversion for Calc later
+    Serial.println("Initialisation is now running. Please don't adjust anything.");
     for(int i = 0; i < 2; i++) {
-        int PWMvalues[3] = {1200, 1500, 1800};
+        int PWMvalues[3] = {1200, 1600, 2000}; // change this as see fit, more PWM values will be good but make sure to change gradient code
         
         for(int j = 0; j < 3; j++){
-            unsigned int ESCtoRPM = ESCtoRPM_readings(&props[i], props[i].CSN, props[i].PWM, PWMvalues[j]);
-            props[i].RPMreadings[j] = ESCtoRPM;
-            if(ESCtoRPM == 0) {
+            unsigned int PWMtoRPM = PWMtoRPM_readings(&props[i], props[i].CSN, props[i].PWM, PWMvalues[j]);
+            props[i].RPMreadings[j] = PWMtoRPM;
+            if(PWMtoRPM == 0) {
                 // Check if RPM Sensors areworking for these values
-                Serial.println("The RPM recorded is zero for these ESC values, please check the RPM sensors or code is working");
+                Serial.println("The RPM recorded is zero for these PWM values, please check the RPM sensors or code is working");
             }
             else {
                 Serial.print("The RPM for Prop");
@@ -190,11 +212,13 @@ void setup() {
                 Serial.print("at PWM Value"); // i hate how this works
                 Serial.print(PWMvalues[j]);
                 Serial.print("is");
-                Serial.println(ESCtoRPM);
+                Serial.println(PWMtoRPM);
             }
         }
+        
+        
     }
-    Serial.println("RPM to ESC Readings have now been measured, this will be used for conversions")
+    Serial.println("ALL RPM to PWM Readings have now been measured, these will be used for conversions");
 
 }
 
@@ -202,14 +226,20 @@ void loop() {
     //_____________________________WHAT RPM AND PHASE DIFF DO YOU WANT________________________________
     // This will set the RPM for all motors, and the phase difference required between
     // __RPM__
-    int SETRPM = 1200; // This will start by setting the ESC/PWM value required for the RPM in MOTOR 1
+    int SETRPM = 2000; // This will start by setting the ESC/PWM value required for the RPM in MOTOR 1
+    int i;
+    // Therefore required PWM value for each prop can be calculated and set
+    for(i = 0; i < 2;  i++) {
+        int PWMVal = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, SETRPM, props[i].grad)
+        digital.Write(props[i].PWM, PWMVal)
+    }
+}
 
 
 
 
 
-
-
+/*
     for(int i = 1; i<2; i++) {
     
         while( rpm[0] <  1250) { // check rpm is atleast above a certain value first
