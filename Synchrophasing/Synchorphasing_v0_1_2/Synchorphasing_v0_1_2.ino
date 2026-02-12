@@ -164,6 +164,9 @@ unsigned int PWMfromRPM(Prop* p, int CSN, int PWM, int RPM, int gradient){
     }
 }
 
+
+
+
 void setup() {
     Serial.begin(9600);
 
@@ -218,21 +221,64 @@ void setup() {
         
         
     }
+
+
     Serial.println("ALL RPM to PWM Readings have now been measured, these will be used for conversions");
-
-}
-
-void loop() {
     //_____________________________WHAT RPM AND PHASE DIFF DO YOU WANT________________________________
     // This will set the RPM for all motors, and the phase difference required between
     // __RPM__
     int SETRPM = 2000; // This will start by setting the ESC/PWM value required for the RPM in MOTOR 1
-    int i;
+    
     // Therefore required PWM value for each prop can be calculated and set
-    for(i = 0; i < 2;  i++) {
-        int PWMVal = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, SETRPM, props[i].grad)
-        digital.Write(props[i].PWM, PWMVal)
+    for(int i = 0; i < 2;  i++) {
+        int PWMVal = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, SETRPM, props[i].grad);
+        digitalWrite(props[i].PWM, PWMVal);
+        delay(1000);
+        props[i].rpm = AverageRPM(&props[i], props[i].CSN);
+        // Print off what RPM value it is
+        Serial.print("Prop ");
+        Serial.print(i);
+        Serial.print(" has RPM:");
+        Serial.println(props[i].rpm);
+
     }
+
+
+}
+
+void loop() {
+    
+    int i = 0; // gonna use i a lot so may as well initialise now   
+    int j = 0;
+    for(i = 0; i < 2;  i++) {
+        /*checks to see if rpm is right or atleast within that zone, this is most likely to happen as
+        that linear assumption of PWM to RPM is not likely to be correct.
+        To fix this, we could set a new gradient of the current RPM and ESC Setting with a previous one,
+        In essence, we would be constantly correcting the linearity and increasing (or decreasing) until
+        the RPM was within 30.
+        */
+        while(!(props[i].rpm > (SETRPM+30) && props[i].rpm < (SETRPM-30)))
+            if(props[i].rpm > (SETRPM+30)){
+
+                // make a new 2 int array with the current RPM and PWM
+                int RPMarray[2] = {0 , 0};
+                int PWMarray[2] = {1000, 1000}; // 1000 again is minimum
+                Serial.print
+
+            }
+            else if(props[i].rpm < (SETRPM-30)) {
+
+            }
+
+    }
+    
+    
+    
+
+
+
+
+
 }
 
 
