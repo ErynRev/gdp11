@@ -19,6 +19,7 @@ knowledge for this.
 #include <SD.h>
 
 
+
 //_______________________SET UP STRUCTURE_______________________
 typedef struct{
     // whats needed? CSN pins, PWN pins, phase angle, rpm
@@ -107,10 +108,6 @@ unsigned int AverageRPM(Prop* p, int CSN) {
 
 
 
-
-
-
-
 unsigned int PWMtoRPM_readings(Prop* p, int CSN, int PWM, int PWMVal) { // Returns RPMreading for each prop and PWMValue
     // This converts the ESC to RPM using the readings of the specific Motor
     // Initialises at 3 points to get a rough linear approximation for the PWM to RPM
@@ -165,13 +162,14 @@ unsigned int PWMfromRPM(Prop* p, int CSN, int PWM, int RPM, int gradient){
 }
 
 
+Prop props[2];
 
 
 void setup() {
     Serial.begin(9600);
 
     // INITIALISATION OF PROPS 
-    Prop props[2];
+    
     // Set CSN, PWM pins, and rpms and phase to start at zero;
     unsigned int RPMReads[3] = {0,0,0}; // start all at 0 
     add_prop(&props[0], 10, 11, 0, 0, RPMReads, 0);
@@ -224,62 +222,201 @@ void setup() {
 
 
     Serial.println("ALL RPM to PWM Readings have now been measured, these will be used for conversions");
+
+}
+
+void loop() {
+    
+    int i = 0; // gonna use i a lot so may as well initialise now  
+    int n = 0; // number of propellers needed to be corrected, if motor 1 is off SetRPM we can increase this one first. 
+        // Alternatively we can Base off MOTOR 1s rpm instead.
+    int j = 0;
+
     //_____________________________WHAT RPM AND PHASE DIFF DO YOU WANT________________________________
     // This will set the RPM for all motors, and the phase difference required between
     // __RPM__
     int SETRPM = 2000; // This will start by setting the ESC/PWM value required for the RPM in MOTOR 1
-    
+    int PWMVal[2] = {0,0}; // current PWM Values
+
+    // make a new 2 int array with the current RPM and PWM
+    int RPMarray[2] = {0 , 0};
+    int PWMarray[2] = {1000, 1000}; // 1000 again is minimum
+
+    int RPMdiff = 0; // RPM difference from SETRPM and current RPM
+
+    int goldRPM[2] = {0, 0}; // golden ratio RPMs
+    int goldPWM[2] = {0, 0}; // golden ratio PWMs
+    int goldDiff[2] = {0, 0};
+
+    int grad = 0; // gradient
+
+
     // Therefore required PWM value for each prop can be calculated and set
     for(int i = 0; i < 2;  i++) {
-        int PWMVal = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, SETRPM, props[i].grad);
-        digitalWrite(props[i].PWM, PWMVal);
-        delay(1000);
+        PWMVal[i] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, SETRPM, props[i].grad);
+        digitalWrite(props[i].PWM, PWMVal[i]);
+        delay(5000); // delay 5 seconds, allow time for prop to get up to speed
         props[i].rpm = AverageRPM(&props[i], props[i].CSN);
         // Print off what RPM value it is
         Serial.print("Prop ");
         Serial.print(i);
         Serial.print(" has RPM:");
         Serial.println(props[i].rpm);
-
     }
 
 
-}
+    while(PWMVal[0] > 1000) { // Make sure theyre actually running
+        if(!(props[0].rpm > (SETRPM + 200 ) && props[0].rpm < (SETRPM - 200))) { // Checks how close Motor 1 rpm is, if 200, then doesnt 
+        // run control for MOTOR 1 - Just a side thing to ensure getting the closest value.
 
-void loop() {
-    
-    int i = 0; // gonna use i a lot so may as well initialise now   
-    int j = 0;
-    for(i = 0; i < 2;  i++) {
-        /*checks to see if rpm is right or atleast within that zone, this is most likely to happen as
-        that linear assumption of PWM to RPM is not likely to be correct.
-        To fix this, we could set a new gradient of the current RPM and ESC Setting with a previous one,
-        In essence, we would be constantly correcting the linearity and increasing (or decreasing) until
-        the RPM was within 30.
-        */
-        while(!(props[i].rpm > (SETRPM+30) && props[i].rpm < (SETRPM-30)))
-            if(props[i].rpm > (SETRPM+30)){
+            n = 1;
+            SETRPM = props[0].rpm;
+        }
+        
+        for(i = n; i < 2;  i++) {
+            /*checks to see if rpm is right or atleast within that zone, this is most likely to happen as
+            that linear assumption of PWM to RPM is not likely to be correct.
+            To fix this, we could set a new gradient of the current RPM and ESC Setting with a previous one,
+            In essence, we would be constantly correcting the linearity and increasing (or decreasing) until
+            the RPM was within 30.
 
-                // make a new 2 int array with the current RPM and PWM
-                int RPMarray[2] = {0 , 0};
-                int PWMarray[2] = {1000, 1000}; // 1000 again is minimum
-                Serial.print
+            We will use a golden search ratio, i.e. checking 0.33 and 1 (or 0.67 from 0.33) along the line 
+            from the new point and intercept. 
 
+            (this new line will have a new gradient) -> this will then give us two more points
+            which will depend on if the RPM is within the 0 - 0.33 or 0.33 - 1(current as 0 and 1 as M1 RPM)
+            
+            continue the same now with these values - constantly searching the golden ratio till either
+            bracket falls into the +-30RPM (+-0.5Hz)
+            
+            */
+            
+            while(!(props[i].rpm > (SETRPM + 30) && props[i].rpm < (SETRPM - 30))) {
+                if(props[i].rpm > (SETRPM + 30)){
+                    RPMArray[0] = SETRPM;
+                    RPMArray[1] = props[i].rpm
+
+                    //RPMDifference
+                    RPMdiff = (props[i].rpm - SETRPM + 30);
+
+
+                    // decrease
+                    
+                    grad = ((RPMarray[1])-(RPMarray[0]))/((PWMarray[1])-(PWMarray[0]));
+
+
+                    //0.33
+                    goldRPM[0] = props[i].rpm - 0.33 * RPMdiff;
+                    goldPWM[0] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad);
+
+
+                    //0.67
+                    goldRPM[1] = props[i].rpm - 0.67 * RPMdiff;
+                    goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[2], grad);
+
+                    for(i = 0; i < 2; i++){
+                        digitalWrite(props[i].PWM, goldPWM[i]);
+                        delay(500);
+                        goldRPM[i] = AverageRPM(&props[i], props[i].CSN);
+                        goldDiff[i] = SETRPM - goldRPM;
+                        if(goldDiff[i] < 0) {
+                            j += 1;
+                            goldDiff[i] *= -1;
+                        }
+                        delay(10);
+                    
+                    }
+                  
+                    
+                    if(goldDiff[1] < goldDiff[0]) {
+                        RPMArray[1] = goldRPM[0];
+                        
+                        if(j == 1){
+                            RPMarray[0] = goldRPM[1];
+                        }
+                    
+                    }
+
+                    else if(goldDiff[0] < goldDiff[1]) {
+                        RPMArray[1] = goldRPM[1];
+                        if(j == 1){
+                            RPMArray[0] = goldRPM[0];
+                        }
+
+                    }
+
+                    
+                    j = 0;
+                
+                }
+
+                else if(props[i].rpm < (SETRPM-30)) {
+                    // increase
+
+                    //RPMDifference
+                    RPMdiff = (props[i].rpm - SETRPM+30);
+
+
+                    // increase
+                    RPMarray[1] = props[i].rpm;
+                    grad = ((RPMarray[1])-(RPMarray[0]))/((PWMarray[1])-(PWMarray[0]));
+                    
+
+                    //0.33
+                    goldRPM[0] = props[i].rpm - 0.33 * RPMdiff;
+                    goldPWM[0] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad);
+
+
+                    //0.67
+                    goldRPM[1] = props[i].rpm - 0.67 * RPMdiff;
+                    goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[2], grad);
+
+                    for(i = 0; i < 2; i++){
+                        digitalWrite(props[i].PWM, goldPWM[i]);
+                        delay(500);
+                        goldRPM[i] = AverageRPM(&props[i], props[i].CSN);
+                        goldDiff[i] = SETRPM - goldRPM;
+                        if(goldDiff[i] < 0) {
+                            j += 1;
+                            goldDiff[i] *= -1;
+                        }
+                        delay(10);
+                    
+                    }
+                  
+                    
+                    if(goldDiff[1] < goldDiff[0]) {
+                        
+                        RPMArray[1] = goldRPM[1];
+                        if(j == 1){
+                            RPMarray[1] = goldRPM[0]; 
+                            RPMarray[0] = goldRPM[1];
+                        }
+                    
+                    }
+
+                    else if(goldDiff[0] < goldDiff[1]) {
+                        RPMArray[0] = goldRPM[1];
+                        if(j == 1){
+                            RPMArray[1] = goldRPM[1];
+                        }
+
+                    }
+
+                    
+                    j = 0;
+                
+
+
+
+                }
+                
             }
-            else if(props[i].rpm < (SETRPM-30)) {
-
-            }
-
+        }
     }
-    
-    
-    
-
-
-
-
-
 }
+
+
 
 
 
