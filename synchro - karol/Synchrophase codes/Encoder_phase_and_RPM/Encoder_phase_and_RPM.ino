@@ -84,5 +84,5 @@ void loop() {
   Serial.print("  rpm=");
   Serial.println(rpm, 2);
 
-  delay(50);
+  delay(1);
 }

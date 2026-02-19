@@ -63,10 +63,13 @@ void add_prop(Prop* p, int CSN, int PWM, int phase, unsigned int rpm, unsigned i
 unsigned int RPMSensor(Prop* p, int CSN) {
 
 //Send the Command Frame
-    int pos[2] = {0,0};
-    int angle[2] = {0,0};
+    float anglediff = 0;
+    float angle[2] = {0,0};
+    int y = 0;
     unsigned long StartTime = micros();
     
+
+
     for(int i = 0; i<2; i++) {
         //Send the Command Frame
         digitalWrite(CSN, LOW);
@@ -92,13 +95,20 @@ unsigned int RPMSensor(Prop* p, int CSN) {
     }
     unsigned long CurrentTime = micros();
     unsigned long ElapsedTime = (CurrentTime - StartTime - 5); // minus extra 5 from end delay
-    // calc pos outside of run 
-    for(int i = 0; i < 2; i++) {
-    pos[i] = ( (unsigned long) angle[i])*360UL/16384UL;
+    anglediff = angle[1]- angle[0];
+
+    if (dAngle > 8192)  {
+        dAngle -= 16384;
+        
     }
+    if (dAngle < -8192) dAngle += 16384;
+
+    float Revs = anglediff / 16384.0;
+    
+
      // in total between read times 
         
-    return (signed int) ((pos[1]-pos[0])/(ElapsedTime)); // Positions Difference / Over time taken 
+    return (unsigned int) Revs/ElapsedTime ; // Positions Difference / Over time taken 
     
     // unsure if this works tbh
 
@@ -178,14 +188,14 @@ Prop props[2];
 
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(1000000);
 
     // INITIALISATION OF PROPS 
     
     // Set CSN, PWM pins, and rpms and phase to start at zero;
     unsigned int RPMReads[3] = {0,0,0}; // start all at 0 
-    add_prop(&props[0], 10, 11, 0, 0, RPMReads, 0);
-    add_prop(&props[1], 15, 16, 0, 0, RPMReads, 0);
+    add_prop(&props[0], 10, 9, 0, 0, RPMReads, 0);
+    //add_prop(&props[1], 15, 16, 0, 0, RPMReads, 0);
     // A reminder that the structure is PROP(CSN,PWM,current phase, current rpm, RPM Readings, and Gradient of ESC to RPM )
 
     // SETUP Pins
