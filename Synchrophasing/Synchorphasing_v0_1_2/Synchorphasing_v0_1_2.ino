@@ -15,6 +15,18 @@ knowledge for this.
 // or change code if easier
 
 
+/*
+This section is for each error means in the Serial Print, just to make it easier to find
+
+Error 101 - PWMfromRPM Function
+Error 102 - void setup - RPM Prop initialisation
+Error 103 - void loop - Decrease Feedback - Case 3 
+Error 104 - Wrong Feedback Selected
+
+*/
+
+
+
 #include <SPI.h>
 #include <SD.h>
 
@@ -153,7 +165,7 @@ unsigned int PWMfromRPM(Prop* p, int CSN, int PWM, int RPM, int gradient){
     PWMValue = gradient * RPM + yintercept;
     
     if(!(PWMValue > 1000 && PWMValue < 2000)){
-        Serial.println("PWM Value not calculated correctly, please check code");
+        Serial.println("Error 101 - PWM Value not calculated correctly, please check code");
         return 0;
     }
     else {
@@ -205,7 +217,7 @@ void setup() {
             props[i].RPMreadings[j] = PWMtoRPM;
             if(PWMtoRPM == 0) {
                 // Check if RPM Sensors areworking for these values
-                Serial.println("The RPM recorded is zero for these PWM values, please check the RPM sensors or code is working");
+                Serial.println("Error 102 - The RPM recorded is zero for these PWM values, please check the RPM sensors or code is working");
             }
             else {
                 Serial.print("The RPM for Prop");
@@ -224,13 +236,19 @@ void setup() {
     Serial.println("ALL RPM to PWM Readings have now been measured, these will be used for conversions");
 
 }
+void loop() {
+    
+    Serial.println("Loop mode");
+}
 
+/*
 void loop() {
     
     int i = 0; // gonna use i a lot so may as well initialise now  
     int n = 0; // number of propellers needed to be corrected, if motor 1 is off SetRPM we can increase this one first. 
         // Alternatively we can Base off MOTOR 1s rpm instead.
     int j = 0;
+    int k = 0; // check for phase so rpm control doesnt try starting again
 
     //_____________________________WHAT RPM AND PHASE DIFF DO YOU WANT________________________________
     // This will set the RPM for all motors, and the phase difference required between
@@ -239,16 +257,21 @@ void loop() {
     int PWMVal[2] = {0,0}; // current PWM Values
 
     // make a new 2 int array with the current RPM and PWM
-    int RPMarray[2] = {0 , 0};
-    int PWMarray[2] = {1000, 1000}; // 1000 again is minimum
+    int RPMArray[2] = {0 , 0};
+    int PWMArray[2] = {1000, 1000}; // 1000 again is minimum
 
+    int RPMinit = 0; // Initial RPM as controlling starts
     int RPMdiff = 0; // RPM difference from SETRPM and current RPM
 
     int goldRPM[2] = {0, 0}; // golden ratio RPMs
     int goldPWM[2] = {0, 0}; // golden ratio PWMs
     int goldDiff[2] = {0, 0};
+    
 
     int grad = 0; // gradient
+
+
+    int phasediff = 90; // What phase difference do we want between them
 
 
     // Therefore required PWM value for each prop can be calculated and set
@@ -282,6 +305,7 @@ void loop() {
 
             We will use a golden search ratio, i.e. checking 0.33 and 1 (or 0.67 from 0.33) along the line 
             from the new point and intercept. 
+            FROM NOW ON I WILL REFER TO THESE VALUES AS RPM Initial, 0.33 and 1
 
             (this new line will have a new gradient) -> this will then give us two more points
             which will depend on if the RPM is within the 0 - 0.33 or 0.33 - 1(current as 0 and 1 as M1 RPM)
@@ -290,171 +314,307 @@ void loop() {
             bracket falls into the +-30RPM (+-0.5Hz)
             
             */
-            
+            /*
+            for(j = 0; j < 1; j++) {
+                // only want this to happen once
+                RPMArray[0] = 0;
+                RPMArray[1] = props[i].rpm;
+            }
+                
             while(!(props[i].rpm > (SETRPM + 30) && props[i].rpm < (SETRPM - 30))) {
                 if(props[i].rpm > (SETRPM + 30)){
-                    RPMArray[0] = SETRPM;
-                    RPMArray[1] = props[i].rpm
+
+                    /* this is where the RPM is too high compared to the bracket 
+                    PWM must decrease
+                    */
+                    /*
+                    RPMinit = props[i].rpm;
 
                     //RPMDifference
-                    RPMdiff = (props[i].rpm - SETRPM + 30);
+                    RPMdiff = ( RPMinit - SETRPM + 30);
 
 
                     // decrease
                     
-                    grad = ((RPMarray[1])-(RPMarray[0]))/((PWMarray[1])-(PWMarray[0]));
+                    grad = ((RPMArray[1])-(RPMArray[0]))/((PWMArray[1])-(PWMArray[0]));
 
 
                     //0.33
-                    goldRPM[0] = props[i].rpm - 0.33 * RPMdiff;
+                    goldRPM[0] = RPMinit - 0.33 * RPMdiff;
                     goldPWM[0] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad);
 
 
                     //0.67
-                    goldRPM[1] = props[i].rpm - 0.67 * RPMdiff;
+                    goldRPM[1] = RPMinit - 0.67 * RPMdiff;
                     goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[2], grad);
 
-                    for(i = 0; i < 2; i++){
-                        digitalWrite(props[i].PWM, goldPWM[i]);
+
+                    /*
+                    How? 
+                    The next part of the code will work out which has a closer RPM to SETRPM of the following:
+                    The initial RPM,
+                    The 0.33 along the new line,
+                    Or where the new line proposes that the SETRPM should be.
+
+                    Worked out using the RPM Difference (RPMDiff andd goldDiff)
+
+
+                    This closer value will be chosen, and set as the now current speed for the motor, for the process
+                    to be repeated again.
+
+                    However, IF TWO of the RPM Diff values give different signs, these will then be used as the new 
+                    bracket with the lower value now replacing the 0 in the first part of RPMArray. The PWM value
+                    MUST appear within this and will be stopped solving once one of the values is placed within
+                    the +-30RPM bracket
+
+                    1. RPM Values along new line
+                    2. RPM Diff and Gold Diff
+                    3. NEW RPMArray set.
+                    4. Repeat.
+
+                    WHAT CASES are there!!!!! think of them all, you _WILL_ run into an edge case.
+                    
+                    CASE 1 - 0.33 > SETRPM > 1  -- between
+                    CASE 2 - RPMInit > SETRPM > 0.33 -- between
+                    CASE 3 - SETRPM < 1 -- still lower
+                    CASE 4 - RPMInit < SETRPM - ERROR 
+
+
+                    
+                    for(j = 0; j < 2; j++){
+                        digitalWrite(props[i].PWM, goldPWM[j]);
                         delay(500);
-                        goldRPM[i] = AverageRPM(&props[i], props[i].CSN);
-                        goldDiff[i] = SETRPM - goldRPM;
-                        if(goldDiff[i] < 0) {
-                            j += 1;
-                            goldDiff[i] *= -1;
-                        }
+                        goldRPM[j] = AverageRPM(&props[j], props[j].CSN);
+                        goldDiff[j] = SETRPM - goldRPM[j];
+                        if(goldDiff[j] ==
                         delay(10);
                     
                     }
-                  
-                    
-                    if(goldDiff[1] < goldDiff[0]) {
-                        RPMArray[1] = goldRPM[0];
-                        
-                        if(j == 1){
-                            RPMarray[0] = goldRPM[1];
-                        }
-                    
-                    }
 
-                    else if(goldDiff[0] < goldDiff[1]) {
+                    // Which Value is closer?
+                    // go through each check, 
+                    //is RPM Diff bigger than goldDiff[0]
+
+                                       
+                    //_____ Case 1 - RPM between gold values 0.33 and 1 _______
+                    // 1.1 - 0.33 is closer
+                    // this would infer that the value is now inbetween 1 and 0.33
+                    // (most likely case)
+                    if( (SETRPM < goldRPM[0] && SETRPM > goldRPM[1])) {
+                        RPMArray[0] = goldRPM[0];
                         RPMArray[1] = goldRPM[1];
-                        if(j == 1){
-                            RPMArray[0] = goldRPM[0];
+                        
+                        if(goldDiff[0] < goldDiff[1]) {
+                            /* This is the part of the case when the 0.33 case is closest, 
+                    
+                            Setting the 0.33 value as the new RPM as it is closest to the 
+                            wanted RPM.
+                            
+                            digitalWrite(props[i].PWM, goldPWM[0]);
+                        
                         }
+
+                        else {
+                            // 1 value is the closest.
+                            digitalWrite(props[i].PWM, goldPWM[1]);
+                        }
+                    }
+
+                    //_____ Case 2 - RPM between gold values 0 and 0.33 _______
+                    
+                    else if( RPMinit > SETRPM && SETRPM < goldRPM[0]) {
+                        RPMArray[0] = RPMinit;
+                        RPMArray[1] = goldRPM[0];
+                        if(RPMdiff < goldDiff[0]) {
+                            // 0 / RPMinit is closest
+                            digitalWrite(props[i].PWM, RPMinit);
+                            // IF THIS HAPPENS WHAT DO WE DO? - THIS CASE MEANS A COSNTANT 
+                            // REPEAT -- must solve for this, i.e. decrease gradient?
+                        
+                            Serial.println("Error 103 - Initial RPM is closest not correct for this CASE, CHECK CODE");
+                            
+                        }
+
+                        else {
+                            // 0.33 value is the closest.
+                            digitalWrite(props[i].PWM, goldPWM[0]);
+                        }
+
 
                     }
 
+                    //_____ Case 3 - RPM below highest val 1 still _______
+
+                    else if( goldRPM[1] < SETRPM) {
+                        // this isnt an error in this part just a less likely case, and means that it should just run again
+                        // from this value
+                        RPMArray[1] = goldRPM[1];
+                        digitalWrite(props[i].PWM, goldPWM[1]);
+                    }
                     
-                    j = 0;
+                    //_____ Case 4 - RPM above RPMinit _______
+                    else if ( RPMinit < SETRPM) {
+                        // Code has broken 
+                        Serial.println("Error 104 - Wrong Feedback Selected, Check Code");
+                    }         
+
+
+                  
+                                  
+                    
                 
                 }
+
+
+
+
+
+
+
 
                 else if(props[i].rpm < (SETRPM-30)) {
-                    // increase
+                    RPMinit = props[i].rpm;
 
                     //RPMDifference
-                    RPMdiff = (props[i].rpm - SETRPM+30);
+                    RPMdiff = ( RPMinit - SETRPM + 30);
 
 
-                    // increase
-                    RPMarray[1] = props[i].rpm;
-                    grad = ((RPMarray[1])-(RPMarray[0]))/((PWMarray[1])-(PWMarray[0]));
+                    // decrease
                     
+                    grad = ((RPMArray[1])-(RPMArray[0]))/((PWMArray[1])-(PWMArray[0]));
+
 
                     //0.33
-                    goldRPM[0] = props[i].rpm - 0.33 * RPMdiff;
+                    goldRPM[0] = RPMinit + 0.33 * RPMdiff;
                     goldPWM[0] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad);
 
 
                     //0.67
-                    goldRPM[1] = props[i].rpm - 0.67 * RPMdiff;
+                    goldRPM[1] = RPMinit + 0.67 * RPMdiff;
                     goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[2], grad);
 
-                    for(i = 0; i < 2; i++){
-                        digitalWrite(props[i].PWM, goldPWM[i]);
+
+                    /*
+                    How? 
+                    The next part of the code will work out which has a closer RPM to SETRPM of the following:
+                    The initial RPM,
+                    The 0.33 along the new line,
+                    Or where the new line proposes that the SETRPM should be.
+
+                    Worked out using the RPM Difference (RPMDiff andd goldDiff)
+
+
+                    This closer value will be chosen, and set as the now current speed for the motor, for the process
+                    to be repeated again.
+
+                    However, IF TWO of the RPM Diff values give different signs, these will then be used as the new 
+                    bracket with the lower value now replacing the 0 in the first part of RPMArray. The PWM value
+                    MUST appear within this and will be stopped solving once one of the values is placed within
+                    the +-30RPM bracket
+
+                    1. RPM Values along new line
+                    2. RPM Diff and Gold Diff
+                    3. NEW RPMArray set.
+                    4. Repeat.
+
+                    WHAT CASES are there!!!!! think of them all, you _WILL_ run into an edge case.
+                    
+                    CASE 1 - 0.33 < SETRPM < 1  -- between
+                    CASE 2 - RPMInit < SETRPM < 0.33 -- between
+                    CASE 3 - SETRPM > 1 -- still higher
+                    CASE 4 - RPMInit > SETRPM - ERROR 
+
+
+                    
+
+                    for(j = 0; j < 2; j++){
+                        digitalWrite(props[i].PWM, goldPWM[j]);
                         delay(500);
-                        goldRPM[i] = AverageRPM(&props[i], props[i].CSN);
-                        goldDiff[i] = SETRPM - goldRPM;
-                        if(goldDiff[i] < 0) {
-                            j += 1;
-                            goldDiff[i] *= -1;
-                        }
+                        goldRPM[j] = AverageRPM(&props[j], props[j].CSN);
+                        goldDiff[j] = SETRPM - goldRPM[j];
+                        
                         delay(10);
                     
                     }
-                  
-                    
-                    if(goldDiff[1] < goldDiff[0]) {
-                        
+
+                    // Which Value is closer?
+                    // go through each check, 
+                    //is RPM Diff bigger than goldDiff[0]
+
+                                       
+                    //_____ Case 1 - RPM between gold values 0.33 and 1 _______
+                    // 1.1 - 0.33 is closer
+                    // this would infer that the value is now inbetween 1 and 0.33
+                    // (most likely case)
+                    if( (SETRPM < goldRPM[0] && SETRPM > goldRPM[1])) {
+                        RPMArray[0] = goldRPM[0];
                         RPMArray[1] = goldRPM[1];
-                        if(j == 1){
-                            RPMarray[1] = goldRPM[0]; 
-                            RPMarray[0] = goldRPM[1];
-                        }
+                        
+                        if(goldDiff[0] < goldDiff[1]) {
+                            /* This is the part of the case when the 0.33 case is closest, 
                     
-                    }
-
-                    else if(goldDiff[0] < goldDiff[1]) {
-                        RPMArray[0] = goldRPM[1];
-                        if(j == 1){
-                            RPMArray[1] = goldRPM[1];
+                            Setting the 0.33 value as the new RPM as it is closest to the 
+                            wanted RPM.
+                            
+                            digitalWrite(props[i].PWM, goldPWM[0]);
+                        
                         }
 
+                        else {
+                            // 1 value is the closest.
+                            digitalWrite(props[i].PWM, goldPWM[1]);
+                        }
                     }
 
+                    //_____ Case 2 - RPM between gold values 0 and 0.33 _______
                     
-                    j = 0;
-                
+                    else if( RPMinit > SETRPM && SETRPM < goldRPM[0]) {
+                        RPMArray[0] = RPMinit;
+                        RPMArray[1] = goldRPM[0];
+                        if(RPMDiff < goldDiff[0]) {
+                            // 0 / RPMinit is closest
+                            digitalWrite(props[i].PWM, RPMinit);
+                            // IF THIS HAPPENS WHAT DO WE DO? - THIS CASE MEANS A COSNTANT 
+                            // REPEAT -- must solve for this, i.e. decrease gradient?
+                        
+                            Serial.println("Error 103 - Initial RPM is closest not correct for this CASE, CHECK CODE");
+                            
+                        }
+
+                        else {
+                            // 0.33 value is the closest.
+                            digitalWrite(props[i].PWM, goldPWM[0]);
+                        }
 
 
+                    }
 
-                }
-                
-            }
-        }
-    }
-}
+                    //_____ Case 3 - RPM above highest val 1 still _______
 
-
-
-
-
-
-
-/*
-    for(int i = 1; i<2; i++) {
-    
-        while( rpm[0] <  1250) { // check rpm is atleast above a certain value first
-            while(rpm[i] < (rpm[0] - 30) && rpm[i] > (rpm[0] + 30)) {
-                print()
-                // slow down the motor using esc code
-                // Change PWM SENSOR SIGNAL - Servo.write()
-                // can we look at arduino code? - this is gonna be on there
-                // NEEDS to be < 1Hz out (60rpm)
-                if(rpm[i] < (rpm[0] - 30)) {
-                    PWM[i] += 10; 
-                    // whatever this uses change by incremental steps, preferably large enough
-                    // that it doesnt take forever, BUT not too big that it can not fine adjust within.
+                    else if( goldRPM[1] > SETRPM) {
+                        // this isnt an error in this part just a less likely case, and means that it should just run again
+                        // from this value
+                        RPMArray[1] = goldRPM[1];
+                        digitalWrite(props[i].PWM, goldPWM[1]);
+                    }
                     
-                    
-                    
-                    
-                }
-                
-                else if(rpm[i] > (rpm[0] + 30)) {
-                    PWM[i] -= 10; 
+                    //_____ Case 4 - SETRPM below RPMinit _______
+                    else if ( RPMinit < SETRPM) {
+                        // Code has broken 
+                        Serial.println("Error 104 - Wrong Feedback Selected, Check Code")
+                    } 
                 }
 
+            
 
             }
+            //_________________________PHASE CONTROLS!!!!!! __________________
 
-
+            // while(!(props.rpm[i] ==   ))
         }
-    
     }
+    */
 
 
-
-}
-*/
+                  
+                      
