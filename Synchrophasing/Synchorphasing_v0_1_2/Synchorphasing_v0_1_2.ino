@@ -251,7 +251,7 @@ void loop() {
     Serial.println("Loop mode");
 }
 
-/*
+
 void loop() {
     
     int i = 0; // gonna use i a lot so may as well initialise now  
@@ -324,7 +324,7 @@ void loop() {
             bracket falls into the +-30RPM (+-0.5Hz)
             
             */
-            /*
+            
             for(j = 0; j < 1; j++) {
                 // only want this to happen once
                 RPMArray[0] = 0;
@@ -337,7 +337,7 @@ void loop() {
                     /* this is where the RPM is too high compared to the bracket 
                     PWM must decrease
                     */
-                    /*
+                    
                     RPMinit = props[i].rpm;
 
                     //RPMDifference
@@ -389,7 +389,7 @@ void loop() {
                     CASE 3 - SETRPM < 1 -- still lower
                     CASE 4 - RPMInit < SETRPM - ERROR 
 
-
+                    */
                     
                     for(j = 0; j < 2; j++){
                         digitalWrite(props[i].PWM, goldPWM[j]);
@@ -421,7 +421,7 @@ void loop() {
                             wanted RPM.
                             
                             digitalWrite(props[i].PWM, goldPWM[0]);
-                        
+                            */
                         }
 
                         else {
@@ -533,7 +533,7 @@ void loop() {
                     CASE 2 - RPMInit < SETRPM < 0.33 -- between
                     CASE 3 - SETRPM > 1 -- still higher
                     CASE 4 - RPMInit > SETRPM - ERROR 
-
+                    */
 
                     
 
@@ -567,7 +567,7 @@ void loop() {
                             wanted RPM.
                             
                             digitalWrite(props[i].PWM, goldPWM[0]);
-                        
+                            */
                         }
 
                         else {
