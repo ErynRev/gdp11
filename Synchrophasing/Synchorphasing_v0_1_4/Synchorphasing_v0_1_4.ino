@@ -1,31 +1,3 @@
-/*
-This code will use the RPM and Phase Angle sensor on two propellers.
-Synchrophasing will be used to control and match the RPM yet leave the phase angle
-at a degree where the sound waves shall destructively interfere.
-
-This means, the code will need to use control methods, will need to look at prior
-knowledge for this.
-
- how can i make it so using karol's code better
-
-*/
-
-// Use RPM ANGLE SENS v1.0.2 INPUT HERE
-// Just change one keep one good -- decide on which gives best data. set this as 0th element of lists CSN[0] and PWM[0]
-// or change code if easier
-
-
-/*
-This section is for each error means in the Serial Print, just to make it easier to find
-
-Error 101 - PWMfromRPM Function
-Error 102 - void setup - RPM Prop initialisation
-Error 103 - void loop - Decrease Feedback - Case 3 
-Error 104 - Wrong Feedback Selected
-
-*/
-
-
 
 #include <SPI.h>
 #include <SD.h>
@@ -61,22 +33,22 @@ void add_prop(Prop* p, int CSN, int PWM, int phase, unsigned int rpm, unsigned i
 //_________________________CALCULATE RPM_______________________
 // from sensor
 
-unsigned int getAngle(Prop* p, int CSN) {
+uint16_t getAngle(Prop* p, int CSN) {
     uint16_t angle;
 
-    SPI.beginTransaction(SPISettings(100000, MSBFIRST, SPI_MODE1)); // start slow
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE1)); // start slow
 
-    digitalWrite(CS_PIN, LOW);
+    digitalWrite(CSN, LOW);
     delayMicroseconds(2);
     SPI.transfer16(0xFFFF);         // command frame for angle (0x3FFF read)
-    digitalWrite(CS_PIN, HIGH);
+    digitalWrite(CSN, HIGH);
 
     delayMicroseconds(2);
 
-    digitalWrite(CS_PIN, LOW);
+    digitalWrite(CSN, LOW);
     delayMicroseconds(2);
     angle = SPI.transfer16(0x0000); // read response
-    digitalWrite(CS_PIN, HIGH);
+    digitalWrite(CSN, HIGH);
 
     SPI.endTransaction();
 
@@ -85,23 +57,20 @@ unsigned int getAngle(Prop* p, int CSN) {
 }
 
 
-unsigned int RPMSensor(Prop* p, int CSN) {
+float RPMSensor(Prop* p, int CSN) {
 
 //Send the Command Frame
     int anglediff = 0;
-    int angle[2] = {0,0};
-    int y = 0;
+    unsigned int angle[2] = {0,0};
     unsigned long StartTime = micros();
     
 
 
     for(int i = 0; i<2; i++) {
-        angle[i] = getAngle;
-    
+        angle[i] = getAngle(p, CSN);
     }
-    unsigned long ElapsedTime = micros();
-    ElapsedTime -= StartTime;
-    ElapsedTime *=  1e-6;
+    unsigned long CurrentTime = micros();
+    float ElapsedTime = (CurrentTime - StartTime) *1e-6;
 
     anglediff = angle[1] - angle[0];
         
@@ -111,7 +80,7 @@ unsigned int RPMSensor(Prop* p, int CSN) {
 
     if (anglediff < -8192) anglediff += 16384;
 
-    float Revs = anglediff / 16384.0;
+    float Revs = (float) anglediff / 16384.0;
     
 
      // in total between read times 
@@ -122,15 +91,26 @@ unsigned int RPMSensor(Prop* p, int CSN) {
 
 }
 
-unsigned int AverageRPM(Prop* p, int CSN) {
+static float rpmEma = 0.0f;
+static bool  rpmInit = false;
+const float ALPHA = 0.04f;   // 0.05..0.30 (smaller = smoother)
+
+inline float ema(float x) {
+    if (!rpmInit) { rpmEma = x; rpmInit = true; }
+    else          { rpmEma += ALPHA * (x - rpmEma); }
+    return rpmEma;
+}
+
+float AverageRPM(Prop* p, int CSN) {
     // cant trust that the above was completely reliable especially cus unsure how quick code will run
-    int rpmaverage = 0;
+    float rpmaverage = 0;
 
     for(int i = 0; i < 2; i++) {
         rpmaverage += RPMSensor(p, CSN);
         delayMicroseconds(10);
     }
-    return (rpmaverage)/2;
+    rpmaverage /= 2;
+    return ema(rpmaverage);
 }
 
 
@@ -138,18 +118,19 @@ unsigned int AverageRPM(Prop* p, int CSN) {
 
 
 
-unsigned int PWMtoRPM_readings(Prop* p, Servo mot, int CSN, int PWM, int PWMVal) { // Returns RPMreading for each prop and PWMValue
+float PWMtoRPM_readings(Prop* p, Servo mot, int CSN, int PWM, int PWMVal) { // Returns RPMreading for each prop and PWMValue
     // This converts the ESC to RPM using the readings of the specific Motor
     // Initialises at 3 points to get a rough linear approximation for the PWM to RPM
     // Take three Throttle values between 1000 and 2000 (assumed min and max PWM for this motor, typical for industry)
     
     // Using values 1200, 1500, 1800
     
-    unsigned int Reading;
+    float Reading;
 
     mot.writeMicroseconds(PWMVal);
     delay(1000); // delay for a second for warm up
     Reading = AverageRPM(p, CSN); // (calling function for finding RPM);
+
 
     return (Reading);
 
@@ -199,8 +180,8 @@ int diagonal = 0; // set as 1 if you want diagonal phase difference
 int adjacent = 1; // set as 1 if you want adjacent phase difference
 
 
-Prop props[1];
-Servo motor[1];
+Prop props[2];
+Servo motor[2];
 
 
 void setup() {
@@ -210,8 +191,8 @@ void setup() {
     
     // Set CSN, PWM pins, and rpms and phase to start at zero;
     unsigned int RPMReads[3] = {0,0,0}; // start all at 0 
-    add_prop(&props[0], 10, 9, 0, 0, RPMReads, 0);
-    //add_prop(&props[1], 15, 16, 0, 0, RPMReads, 0);
+    add_prop(&props[0], 5, 4, 0, 0, RPMReads, 0);
+    add_prop(&props[1], 10, 9, 0, 0, RPMReads, 0);
     // A reminder that the structure is PROP(CSN,PWM,current phase, current rpm, RPM Readings, and Gradient of ESC to RPM )
 
     // SETUP Pins
@@ -266,6 +247,7 @@ void setup() {
     Serial.println("Loop mode");
 
 }
+
 void loop() {
     
     int i = 0; // gonna use i a lot so may as well initialise now  
