@@ -15,10 +15,10 @@ typedef struct{
     float RPMreadings[3]; // This will give each propeller its own ESC to RPM Reading conversion, 
                                  // we can use this to see how much each Prop will need its power increased by
                                  // (or decreased) for the RPMs to match.
-    int grad; // Gradient for each prop worked out from RPM Readings and ESC Values
+    float grad; // Gradient for each prop worked out from RPM Readings and ESC Values
 }Prop;
 
-void add_prop(Prop* p, int CSN, int PWM, int phase, float rpm, float RPMreadings[3], int grad) {
+void add_prop(Prop* p, int CSN, int PWM, int phase, float rpm, float RPMreadings[3], float grad) {
     p->CSN = CSN;
     p->PWM = PWM;
     p->phase = phase;
@@ -122,7 +122,7 @@ float AverageRPM(Prop* p, int CSN) {
 
 
 
-float PWMtoRPM_readings(Prop* p, Servo mot, int CSN, int PWM, int PWMVal) { // Returns RPMreading for each prop and PWMValue
+float PWMtoRPM_readings(Prop* p, Servo mot, int CSN, int PWM, float PWMVal) { // Returns RPMreading for each prop and PWMValue
     // This converts the ESC to RPM using the readings of the specific Motor
     // Initialises at 3 points to get a rough linear approximation for the PWM to RPM
     // Take three Throttle values between 1000 and 2000 (assumed min and max PWM for this motor, typical for industry)
@@ -154,14 +154,14 @@ float PWM_RPMgradient(Prop* p, float PWMVals[3], float RPMVals[3]){
 }
 
 
-unsigned int PWMfromRPM(Prop* p, int CSN, int PWM, int RPM, int gradient){
+float PWMfromRPM(Prop* p, int CSN, int PWM, float RPM, float gradient){
     /* This function will call the RPM readings and PWMVals used to create a correlation between them.
     By doing this we are assuming that it is a linear Correlation between the RPM and PWM.
     From just checking it seems like the case with a few outliers, but either way this should give
     a base value that we can then edit to get the right amount later in the Feedback Loop program.
     */
     // The Gradient is worked out in Setup using equation above
-    int PWMValue = 0;
+    float PWMValue = 0;
     // We assume x intercept is at 1000 with this set up, No power should not Spin the RPM,- No power is at 1000
     // So y = 0 at x < 1070ish, then using grad, yintercept C:
     float yintercept = 0 - (1060 * gradient);
