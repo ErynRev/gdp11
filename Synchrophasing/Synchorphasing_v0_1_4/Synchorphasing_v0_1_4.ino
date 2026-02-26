@@ -163,12 +163,21 @@ float PWMfromRPM(Prop* p, int CSN, int PWM, float RPM, float gradient){
     // The Gradient is worked out in Setup using equation above
     float PWMValue = 0;
     // We assume x intercept is at 1000 with this set up, No power should not Spin the RPM,- No power is at 1000
-    // So y = 0 at x < 1070ish, then using grad, yintercept C:
-    float yintercept = 0 - (1060 * gradient);
+    // So y = 0 at x < 1070ish, then using grad, yintercept, using experimental data we will say 1050
+    /*
+    Using these averages
+    (even though motor doesn’t turn on before 1070)
+    1050 should  be when RPM is 0
+    RPM = PWM * Grad + C
+    C = 0 - (1050 * 15) = -15750 
+
+    PWM = (RPM + 15750) / 15
+    PWM = RPM/15 + 1050
+    */
 
     // Now we have the full linear equation y = mx + C
 
-    PWMValue = (RPM - yintercept) / gradient;
+    PWMValue = RPM / gradient + 1050;
     
     if(!(PWMValue > 1000 && PWMValue < 2000)){
         Serial.println("Error 101 - PWM Value not calculated correctly, please check code");
@@ -297,7 +306,7 @@ void loop() {
     float goldDiff[2] = {0, 0};
     
 
-    float grad = 0; // gradient
+    float grad[2] = {0,0}; // gradient
 
 
     float phasediff = 90; // What phase difference do we want between the 
@@ -322,14 +331,18 @@ void loop() {
         props[i].rpm = AverageRPM(&props[i], props[i].CSN);
         // Print off what RPM value it is
         Serial.print("Motor ");
-        Serial.print(i);
+        Serial.print(i+1);
         Serial.print(" has RPM:");
         Serial.println(props[i].rpm);
     }
+    float setrpmtol_above = SETRPM + 200; // tolerance for RPM to SETRPM at start
+    float setrpmtol_below = SETRPM - 200;
 
+    float rpmtol_above = SETRPM + 30; // tolerance for slave Motor RPM (i = 1 and above) to master Motor RPM (i = 0)
+    float rpmtol_below = SETRPM - 30;
 
     while(PWMVal[0] > 1000) { // Make sure theyre actually running
-        if(!(props[0].rpm > (SETRPM + 200 ) && props[0].rpm < (SETRPM - 200))) { // Checks how close Motor 1 rpm is, if 200, then doesnt 
+        if((props[0].rpm > setrpmtol_above) && (props[0].rpm < setrpmtol_below)) { // Checks how close Motor 1 rpm is, if within tol 200, then doesnt change motor 1
         // run control for MOTOR 1 - Just a side thing to ensure getting the closest value.
 
             n = 1;
@@ -364,9 +377,16 @@ void loop() {
                 PWMArray[1] = PWMVal[i];                
             }
                 
-            while(!(props[i].rpm > (SETRPM + 30) && props[i].rpm < (SETRPM - 30))) {
-                if(props[i].rpm > (SETRPM + 30)){
+            while(!(props[i].rpm > rpmtol_above && props[i].rpm < rpmtol_below)) {
+                if(props[i].rpm > rpmtol_above){
                     
+                    Serial.print("Motor ");
+                    Serial.println(i+1);
+                    Serial.print("has an RPM of ");
+                    Serial.println(props[i].rpm);
+                    Serial.print("with a difference from the tolerance as ");
+                    Serial.print(fabs(props[i].rpm - rpmtol_above));
+                    Serial.print(" above");
 
                     /* this is where the RPM is too high compared to the bracket 
                     PWM must decrease
@@ -381,18 +401,18 @@ void loop() {
                     // decrease
                     delay(40);
                     
-                    grad = ((RPMArray[1])-(RPMArray[0]))/((PWMArray[1])-(PWMArray[0]));
+                    grad[i] = ((RPMArray[1])-(RPMArray[0]))/((PWMArray[1])-(PWMArray[0]));
                     Serial.print("Gradient is ");
-                    Serial.println(grad);
+                    Serial.println(grad[i]);
 
                     //0.33
                     goldRPM[0] = RPMinit - 0.33 * RPMdiff;
-                    goldPWM[0] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[0], grad);
+                    goldPWM[0] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[0], grad[i]);
 
 
                     //0.67
                     goldRPM[1] = RPMinit - 0.67 * RPMdiff;
-                    goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad);
+                    goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad[i]);
 
 
                     /*
@@ -518,8 +538,14 @@ void loop() {
 
 
 
-                if(props[i].rpm < (SETRPM - 30)){   
-
+                if(props[i].rpm < rpmtol_below){   
+                    Serial.print("Motor ");
+                    Serial.println(i+1);
+                    Serial.print("has an RPM of ");
+                    Serial.println(props[i].rpm);
+                    Serial.print("with a difference from the tolerance as ");
+                    Serial.print(fabs(props[i].rpm - rpmtol_below));
+                    Serial.print(" below");
                     /* this is where the RPM is too high compared to the bracket 
                     PWM must decrease
                     */
@@ -532,17 +558,19 @@ void loop() {
 
                     // decrease
                     
-                    grad = ((RPMArray[1])-(RPMArray[0]))/((PWMArray[1])-(PWMArray[0]));
+                    grad[i] = ((RPMArray[1])-(RPMArray[0]))/((PWMArray[1])-(PWMArray[0]));
+                    Serial.print("Gradient is ");
+                    Serial.println(grad[i]);
 
 
                     //0.33
                     goldRPM[0] = RPMinit + 0.33 * RPMdiff;
-                    goldPWM[0] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[0], grad);
+                    goldPWM[0] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[0], grad[i]);
 
 
                     //0.67
                     goldRPM[1] = RPMinit + 0.67 * RPMdiff;
-                    goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad);
+                    goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad[i]);
 
 
                     /*
@@ -713,7 +741,7 @@ void loop() {
                     }
                     
 
-                    grad = ((RPMArray[1])-(RPMArray[0]))/((PWMArray[1])-(PWMArray[0]));
+                    grad[i] = ((RPMArray[1])-(RPMArray[0]))/((PWMArray[1])-(PWMArray[0]));
 
 
                     while(!((curr_phasediff > pd_tolbelow) && (curr_phasediff < pd_tolabove))){
@@ -727,7 +755,7 @@ void loop() {
                         RPMinit = AverageRPM(&props[i], props[i].CSN);
                         float RPMdiff = AverageRPM(&props[i], props[i].CSN) - 50;
                         
-                        PWMphase = PWMfromRPM(&props[i], props[i].CSN, props[i].CSN, RPMdiff, grad);
+                        PWMphase = PWMfromRPM(&props[i], props[i].CSN, props[i].CSN, RPMdiff, grad[i]);
                         if((PWMphase - PWMSave) != 0) {
                             motor[i].writeMicroseconds(PWMphase); // RPM for changing phase (50 less)
                             delayMicroseconds(delaytime);  // delay time needed to bring to phase
@@ -745,7 +773,8 @@ void loop() {
     }
 }
     
-        /*
-        // reset for loop for phase for diagonal as this will have to wait for all to be done, 2 relies on 4, 3 relies on 1
-        if(diagonal == 1) {
-            fo        */
+/*
+reset for loop for phase for diagonal as this will have to wait for all to be done, 2 relies on 4, 3 relies on 1
+if(diagonal == 1) {
+fo       
+*/
