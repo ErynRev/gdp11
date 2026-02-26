@@ -373,7 +373,7 @@ void loop() {
                 // only want this to happen once
                 RPMArray[0] = 0;
                 RPMArray[1] = props[i].rpm;
-                PWMArray[0] = 1000;
+                PWMArray[0] = 1050; // proposed minimum
                 PWMArray[1] = PWMVal[i];                
             }
                 
@@ -395,7 +395,7 @@ void loop() {
                     RPMinit = props[i].rpm;
 
                     //RPMDifference
-                    RPMdiff = ( RPMinit - SETRPM + 30);
+                    RPMdiff = ( RPMinit - SETRPM);
 
 
                     // decrease
@@ -411,7 +411,7 @@ void loop() {
 
 
                     //0.67
-                    goldRPM[1] = RPMinit - 0.67 * RPMdiff;
+                    goldRPM[1] = RPMinit - RPMdiff;
                     goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad[i]);
 
 
@@ -469,7 +469,7 @@ void loop() {
                     // this would infer that the value is now inbetween 1 and 0.33
                     // (most likely case)
                     if( (SETRPM < goldRPM[0] && SETRPM > goldRPM[1])) {
-                        RPMArray[0] = goldRPM[0];
+                        RPMArray[0] = 0;
                         RPMArray[1] = goldRPM[1];
                         
                         if(goldDiff[0] < goldDiff[1]) {
@@ -491,7 +491,7 @@ void loop() {
                     //_____ Case 2 - RPM between gold values 0 and 0.33 _______
                     
                     else if( RPMinit > SETRPM && SETRPM < goldRPM[0]) {
-                        RPMArray[0] = RPMinit;
+                        RPMArray[0] = 0;
                         RPMArray[1] = goldRPM[0];
                         if(RPMdiff < goldDiff[0]) {
                             // 0 / RPMinit is closest
@@ -553,7 +553,7 @@ void loop() {
                     RPMinit = props[i].rpm;
 
                     //RPMDifference
-                    RPMdiff = ( RPMinit - SETRPM + 30);
+                    RPMdiff = (SETRPM - RPMinit);
 
 
                     // decrease
@@ -569,7 +569,7 @@ void loop() {
 
 
                     //0.67
-                    goldRPM[1] = RPMinit + 0.67 * RPMdiff;
+                    goldRPM[1] = RPMinit + RPMdiff;
                     goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad[i]);
 
 
@@ -624,7 +624,7 @@ void loop() {
                     // this would infer that the value is now inbetween 1 and 0.33
                     // (most likely case)
                     if( (SETRPM > goldRPM[0] && SETRPM < goldRPM[1])) {
-                        RPMArray[0] = goldRPM[0];
+                        RPMArray[0] = 0;
                         RPMArray[1] = goldRPM[1];
                         
                         if(goldDiff[0] < goldDiff[1]) {
@@ -646,7 +646,7 @@ void loop() {
                     //_____ Case 2 - RPM between gold values 0 and 0.33 _______
                     
                     else if( RPMinit < SETRPM && SETRPM > goldRPM[0]) {
-                        RPMArray[0] = RPMinit;
+                        RPMArray[0] = 0;
                         RPMArray[1] = goldRPM[0];
                         if(RPMdiff < goldDiff[0]) {
                             // 0 / RPMinit is closest
