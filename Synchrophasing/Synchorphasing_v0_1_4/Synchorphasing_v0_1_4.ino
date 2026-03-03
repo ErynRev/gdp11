@@ -2,7 +2,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include <Servo.h>
-
+#define Pr 4 // number of motors/propellers
 
 
 //_______________________SET UP STRUCTURE_______________________
@@ -16,6 +16,7 @@ typedef struct{
                                  // we can use this to see how much each Prop will need its power increased by
                                  // (or decreased) for the RPMs to match.
     float grad; // Gradient for each prop worked out from RPM Readings and ESC Values
+
 }Prop;
 
 void add_prop(Prop* p, int CSN, int PWM, int phase, float rpm, float RPMreadings[3], float grad) {
@@ -108,8 +109,8 @@ float AverageRPM(Prop* p, int CSN) {
     const int N = 4; // number of averages 
 
     for(int i = 0; i < N; i++) {
-        rpmaverage += RPMSensor(p, CSN);
         delayMicroseconds(10);
+        rpmaverage += (RPMSensor(p, CSN));
     }
 
     rpmaverage /= N;
@@ -129,7 +130,7 @@ float PWMtoRPM_readings(Prop* p, Servo mot, int CSN, int PWM, float PWMVal) { //
     
     // Using values 1200, 1500, 1800
     
-    float Reading;
+    float Reading = 0;
 
     mot.writeMicroseconds(PWMVal);
     delay(5000); // delay for a second for warm up
@@ -147,21 +148,22 @@ float PWM_RPMgradient(Prop* p, float PWMVals[3], float RPMVals[3]){
     for(int i = 0; i < 2; i++){
         if(RPMVals[i] < 50) i++;
         grad += ((RPMVals[i+1])-(RPMVals[i]))/((PWMVals[i+1])-(PWMVals[i]));
-        n++;   
+        n++;
     }
     return grad/n;
 
 }
 
 
-float PWMfromRPM(Prop* p, int CSN, int PWM, float RPM, float gradient){
+
+float PWMfromRPM(Prop* p, int CSN, int PWM, float RPMChange, float gradient){
     /* This function will call the RPM readings and PWMVals used to create a correlation between them.
     By doing this we are assuming that it is a linear Correlation between the RPM and PWM.
     From just checking it seems like the case with a few outliers, but either way this should give
     a base value that we can then edit to get the right amount later in the Feedback Loop program.
     */
     // The Gradient is worked out in Setup using equation above
-    float PWMValue = 0;
+    float PWMChange = 0;
     // We assume x intercept is at 1000 with this set up, No power should not Spin the RPM,- No power is at 1000
     // So y = 0 at x < 1070ish, then using grad, yintercept, using experimental data we will say 1050
     /*
@@ -174,30 +176,26 @@ float PWMfromRPM(Prop* p, int CSN, int PWM, float RPM, float gradient){
     PWM = (RPM + 15750) / 15
     PWM = RPM/15 + 1050
     */
-
+    /* MAKE IT SO THAT THE PWM CHANGE IS GIVEN */
     // Now we have the full linear equation y = mx + C
 
-    PWMValue = RPM / gradient + 1050;
+    PWMChange = RPMChange / gradient;
     
-    if(!(PWMValue > 1000 && PWMValue < 2000)){
-        Serial.println("Error 101 - PWM Value not calculated correctly, please check code");
-        return 0;
-    }
-    else {
-        return PWMValue; // Value outputted should be between 1000 and 2000
-    }
+    
+    return PWMChange; // Value outputted should be between 1000 and 2000
+    
 }
 
 // _________________________ Actual Control CODE ____________________________
 
 //this part is for Diagonal or Adjacent drone props
 
-int diagonal = 0; // set as 1 if you want diagonal phase difference
-int adjacent = 1; // set as 1 if you want adjacent phase difference
+int diagonal = 0; // set as 1 if you want diagonal phase difference 
+int adjacent = 0; // set as 1 if you want adjacent phase difference
 
 
-Prop props[2];
-Servo motor[2];
+Prop props[Pr];
+Servo motor[Pr];
 
 
 void setup() {
@@ -206,14 +204,19 @@ void setup() {
     // INITIALISATION OF PROPS 
     
     // Set CSN, PWM pins, and rpms and phase to start at zero;
+    // Please set the PROPS as co rotating (i.e. diagonal) pairs are next to each other in numbers. i.e pair 1-2 and 3-4
     float RPMReads[3] = {0,0,0}; // start all at 0 
-    add_prop(&props[0], 18, 19, 0, 0, RPMReads, 0);
-    add_prop(&props[1], 6, 5, 0, 0, RPMReads, 0);
+    add_prop(&props[0], 4, 5, 0, 0, RPMReads, 0); // BR
+    add_prop(&props[1], 20, 21, 0, 0, RPMReads, 0); // BL
+    add_prop(&props[2], 24, 25, 0, 0, RPMReads, 0); // FL
+    add_prop(&props[3], 17, 18, 0, 0, RPMReads, 0); // FR
     // A reminder that the structure is PROP(CSN,PWM,current phase, current rpm, RPM Readings, and Gradient of ESC to RPM )
 
     // SETUP Pins
+    
 
-    for(int i = 0; i < 2; i++) {
+
+    for(int i = 0; i < Pr; i++) {
         //Set Pin Modes
         pinMode(props[i].CSN, OUTPUT);
         motor[i].attach(props[i].PWM, 1000, 2000);
@@ -237,11 +240,11 @@ void setup() {
     
     // Initialise RPM and PWM Conversion for Calc later
     Serial.println("Initialisation is now running. Please don't adjust anything.");
-    for(int i = 0; i < 2; i++) {
+    for(int i = 0; i < Pr; i++) {
         motor[i].writeMicroseconds(1000);
-        float PWMvalues[3] = {1070, 1080, 1090}; // change this as see fit, more PWM values will be good but make sure to change gradient code
+        float PWMvalues[3] = {1070, 1085, 1100}; // change this as see fit, more PWM values will be good but make sure to change gradient code
         Serial.print("Motor ");
-        Serial.println(i);
+        Serial.println(i + 1);
         for(int j = 0; j < 3; j++){
             float PWMtoRPM = 0;
             PWMtoRPM = PWMtoRPM_readings(&props[i], motor[i], props[i].CSN, props[i].PWM, PWMvalues[j]);
@@ -255,7 +258,7 @@ void setup() {
             }
             else {
             
-                Serial.print("The RPM for Prop");
+                Serial.print("The RPM for Prop ");
                 Serial.print(i + 1);
                 Serial.print(" at PWM Value  "); // i hate how this works
                 Serial.print(PWMvalues[j]);
@@ -272,16 +275,21 @@ void setup() {
 
 
     Serial.println("ALL RPM to PWM Readings have now been measured, these will be used for conversions");
-    Serial.println("Loop mode");
+    Serial.println("____________________");
+    Serial.println();
+    Serial.println();
+    Serial.println("    CONTROL MODE    ");
+    Serial.println();
+    Serial.println();
+    Serial.println("____________________");
 
 }
-
+int j = 0;
 void loop() {
     
     int i = 0; // gonna use i a lot so may as well initialise now  
     int n = 0; // number of propellers needed to be corrected, if motor 1 is off SetRPM we can increase this one first. 
         // Alternatively we can Base off MOTOR 1s rpm instead.
-    int j = 0;
 
 
 
@@ -289,14 +297,15 @@ void loop() {
     //_____________________________WHAT RPM AND PHASE DIFF DO YOU WANT________________________________
     // This will set the RPM for all motors, and the phase difference required between
     // __RPM__
-    float SETRPM = 1200; // This will start by setting the ESC/PWM value required for the RPM in MOTOR 1
-    float PWMVal[2] = {0,0}; // current PWM Values, the number in this series corresponds to the number of motors
+    float SETRPM = 1000; // This will start by setting the ESC/PWM value required for the RPM in MOTOR 1
+    float PWMVal[Pr] = {0}; // current PWM Values, the number in this series corresponds to the number of motors
     float PWMSave = 0;
 
 
     // make a new 2 int array with the current RPM and PWM
     float RPMArray[2] = {0 , 0};
     float PWMArray[2] = {1000, 1000}; // 1000 again is minimum
+    float PWMChange = 0;
 
     float RPMinit = 0; // Initial RPM as controlling starts
     float RPMdiff = 0; // RPM difference from SETRPM and current RPM
@@ -306,7 +315,7 @@ void loop() {
     float goldDiff[2] = {0, 0};
     
 
-    float grad[2] = {0,0}; // gradient
+    float grad[Pr] = {0}; // gradient
 
 
     float phasediff = 90; // What phase difference do we want between the 
@@ -323,23 +332,88 @@ void loop() {
 
 
     // Therefore required PWM value for each prop can be calculated and set
-    for(int i = 0; i < 2;  i++) {
-        PWMVal[i] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, SETRPM, props[i].grad);
+    for(int i = 0; i < Pr;  i++) {
+        
+        Serial.println("____________________");
+        Serial.print("MOTOR ");
+        Serial.println(i+1);
+        Serial.println("____________________");
+
+
+
+        PWMVal[i] = 1070;
         motor[i].writeMicroseconds(PWMVal[i]);
-        delay(5000); // delay 5 seconds, allow time for prop to get up to speed
-    
+        
+        
+        PWMArray[0] = 1070;
+        
+        
+        
+
+        int Ti = micros(); // Initial time to check if skipped delay
+        delay(1000); // delay 0.5 seconds, allow time for prop to get up to speed
+        
+        int T1 = micros();
         props[i].rpm = AverageRPM(&props[i], props[i].CSN);
+        int T2 = micros();
+        RPMArray[0] = props[i].rpm;
+        RPMdiff = SETRPM - props[i].rpm;
+        Serial.print("Time Delay ");
+        Serial.println(T1-Ti);
+        Serial.print("Time For RPM Fn ");
+        Serial.println(T2-T1);
+
+        // Print off what PWM value it is
+        Serial.print("Current PWM is ");
+        Serial.println(PWMVal[i]);
         // Print off what RPM value it is
-        Serial.print("Motor ");
-        Serial.print(i+1);
-        Serial.print(" has RPM:");
+        Serial.print(" has RPM: ");
         Serial.println(props[i].rpm);
+        
+        
+        PWMChange = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, RPMdiff, props[i].grad);
+        PWMVal[i] = 1070 + PWMChange; // change from current
+        
+        
+        
+        if(!(PWMVal[i] > 1000 && PWMVal[i] < 2000)){
+            Serial.println("Error 101 - PWM Value not calculated correctly, please check code");
+            motor[i].writeMicroseconds(1000);
+        }
+
+
+        // new PWM value
+
+        motor[i].writeMicroseconds(PWMVal[i]);
+        
+        Ti = micros(); // Initial time to check if skipped delay
+        delay(1000); // delay 0.1 seconds, allow time for prop to get up to speed
+        
+        T1 = micros();
+        props[i].rpm = AverageRPM(&props[i], props[i].CSN);
+        T2 = micros();
+        Serial.print("Time Delay ");
+        Serial.println(T1-Ti);
+        Serial.print("Time For RPM Fn ");
+        Serial.println(T2-T1);
+        // Print off what RPM value it is
+        Serial.print("NEW PWM is ");
+        Serial.println(PWMVal[i]);
+        // Print off what RPM value it is
+        Serial.print(" has RPM: ");
+        Serial.println(props[i].rpm);
+        
+        delay(40);
     }
+
+
     float setrpmtol_above = SETRPM + 200; // tolerance for RPM to SETRPM at start
     float setrpmtol_below = SETRPM - 200;
 
     float rpmtol_above = SETRPM + 30; // tolerance for slave Motor RPM (i = 1 and above) to master Motor RPM (i = 0)
     float rpmtol_below = SETRPM - 30;
+
+
 
     while(PWMVal[0] > 1000) { // Make sure theyre actually running
         if((props[0].rpm > setrpmtol_above) && (props[0].rpm < setrpmtol_below)) { // Checks how close Motor 1 rpm is, if within tol 200, then doesnt change motor 1
@@ -350,7 +424,7 @@ void loop() {
             
         }
         
-        for(i = n; i < 2;  i++) {
+        for(i = n; i < Pr;  i++) {
             /*checks to see if rpm is right or atleast within that zone, this is most likely to happen as
             that linear assumption of PWM to RPM is not likely to be correct.
             To fix this, we could set a new gradient of the current RPM and ESC Setting with a previous one,
@@ -368,51 +442,69 @@ void loop() {
             bracket falls into the +-30RPM (+-0.5Hz)
             
             */
-            
-            for(j = 0; j < 1; j++) {
+            while(i < Pr){
+                j = 0;
+            }
+            for(j = j; j < 1; j++) {
                 // only want this to happen once
-                RPMArray[0] = 0;
+                
                 RPMArray[1] = props[i].rpm;
-                PWMArray[0] = 1050; // proposed minimum
-                PWMArray[1] = PWMVal[i];                
+                
+                PWMArray[1] = PWMVal[i];
+                Serial.print("MOTOR ");
+                Serial.println(i+1);
+
+                Serial.print(RPMArray[0]); 
+                Serial.print("  ");    
+                Serial.println(RPMArray[1]);
+                Serial.print(PWMArray[0]); 
+                Serial.print("  ");    
+                Serial.println(PWMArray[1]);
+
+                grad[i] = ((RPMArray[1])-(RPMArray[0]))/((PWMArray[1])-(PWMArray[0]));
+                Serial.print("Gradient is ");
+                Serial.println(grad[i]);          
             }
                 
-            while(!(props[i].rpm > rpmtol_above && props[i].rpm < rpmtol_below)) {
+            while((props[i].rpm > rpmtol_above && props[i].rpm < rpmtol_below)) {
                 if(props[i].rpm > rpmtol_above){
                     
                     Serial.print("Motor ");
                     Serial.println(i+1);
                     Serial.print("has an RPM of ");
-                    Serial.println(props[i].rpm);
-                    Serial.print("with a difference from the tolerance as ");
+                    Serial.print(props[i].rpm);
+                    Serial.print(" with a difference from the tolerance as ");
                     Serial.print(fabs(props[i].rpm - rpmtol_above));
                     Serial.print(" above");
 
                     /* this is where the RPM is too high compared to the bracket 
                     PWM must decrease
                     */
-                    
+
                     RPMinit = props[i].rpm;
+                    
 
                     //RPMDifference
                     RPMdiff = ( RPMinit - SETRPM);
 
 
                     // decrease
-                    delay(40);
+                    delay(60);
                     
                     grad[i] = ((RPMArray[1])-(RPMArray[0]))/((PWMArray[1])-(PWMArray[0]));
                     Serial.print("Gradient is ");
                     Serial.println(grad[i]);
 
                     //0.33
-                    goldRPM[0] = RPMinit - 0.33 * RPMdiff;
-                    goldPWM[0] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[0], grad[i]);
+                    goldRPM[0] = SETRPM - 0.33 * RPMdiff;
+                    PWMChange = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, (- 0.33 * RPMdiff), grad[i]);
+                    goldPWM[0] = PWMVal[i] + PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, (- 0.33 * RPMdiff), grad[i]);
 
 
                     //0.67
                     goldRPM[1] = RPMinit - RPMdiff;
-                    goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad[i]);
+                    PWMChange = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, (- 0.33 * RPMdiff), grad[i]);
+                    goldPWM[1] = PWMVal[i] + PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, (- 0.33 * RPMdiff), grad[i]);
 
 
                     /*
@@ -452,12 +544,20 @@ void loop() {
                         motor[i].writeMicroseconds(goldPWM[j]);
                         delay(500);
                         goldRPM[j] = AverageRPM(&props[j], props[j].CSN);
-                        goldDiff[j] = SETRPM - goldRPM[j];
+                        Serial.print("Gold ");
+                        Serial.print(j + 1);
+                        Serial.print(" has RPM of ");
+                        Serial.print(goldRPM[j]);
+                        Serial.print(" with a diff from Set as ");
                         if(goldDiff[j] < 0) {
                             goldDiff[j] *= -1;
                         }
+                        goldDiff[j] = SETRPM - goldRPM[j];
+                        Serial.println(goldDiff[j]);
                         delay(40);
+                    
                     }
+                    
 
                     // Which Value is closer?
                     // go through each check, 
@@ -469,7 +569,6 @@ void loop() {
                     // this would infer that the value is now inbetween 1 and 0.33
                     // (most likely case)
                     if( (SETRPM < goldRPM[0] && SETRPM > goldRPM[1])) {
-                        RPMArray[0] = 0;
                         RPMArray[1] = goldRPM[1];
                         
                         if(goldDiff[0] < goldDiff[1]) {
@@ -491,7 +590,6 @@ void loop() {
                     //_____ Case 2 - RPM between gold values 0 and 0.33 _______
                     
                     else if( RPMinit > SETRPM && SETRPM < goldRPM[0]) {
-                        RPMArray[0] = 0;
                         RPMArray[1] = goldRPM[0];
                         if(RPMdiff < goldDiff[0]) {
                             // 0 / RPMinit is closest
@@ -542,15 +640,16 @@ void loop() {
                     Serial.print("Motor ");
                     Serial.println(i+1);
                     Serial.print("has an RPM of ");
-                    Serial.println(props[i].rpm);
-                    Serial.print("with a difference from the tolerance as ");
+                    Serial.print(props[i].rpm);
+                    Serial.print(" with a difference from the tolerance as ");
                     Serial.print(fabs(props[i].rpm - rpmtol_below));
-                    Serial.print(" below");
+                    Serial.println(" below");
                     /* this is where the RPM is too high compared to the bracket 
                     PWM must decrease
                     */
                     
                     RPMinit = props[i].rpm;
+                    
 
                     //RPMDifference
                     RPMdiff = (SETRPM - RPMinit);
@@ -562,15 +661,16 @@ void loop() {
                     Serial.print("Gradient is ");
                     Serial.println(grad[i]);
 
-
                     //0.33
-                    goldRPM[0] = RPMinit + 0.33 * RPMdiff;
-                    goldPWM[0] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[0], grad[i]);
+                    goldRPM[0] = SETRPM + 0.33 * RPMdiff;
+                    PWMChange = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, (- 0.33 * RPMdiff), grad[i]);
+                    goldPWM[0] = PWMVal[i] + PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, (- 0.33 * RPMdiff), grad[i]);
 
 
-                    //0.67
+                    //1
                     goldRPM[1] = RPMinit + RPMdiff;
-                    goldPWM[1] = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, goldRPM[1], grad[i]);
+                    PWMChange = PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, (- 0.33 * RPMdiff), grad[i]);
+                    goldPWM[1] = PWMVal[i] + PWMfromRPM(&props[i], props[i].CSN, props[i].PWM, (- 0.33 * RPMdiff), grad[i]);
 
 
                     /*
@@ -609,10 +709,20 @@ void loop() {
                         motor[i].writeMicroseconds(goldPWM[j]);
                         delay(500);
                         goldRPM[j] = AverageRPM(&props[j], props[j].CSN);
+                        Serial.print("Gold ");
+                        Serial.print(j + 1);
+                        Serial.print(" has RPM of ");
+                        Serial.print(goldRPM[j]);
+                        Serial.print(" with a diff from Set as ");
+                        if(goldDiff[j] < 0) {
+                            goldDiff[j] *= -1;
+                        }
                         goldDiff[j] = SETRPM - goldRPM[j];
-                        delay(40);
+                        Serial.println(goldDiff[j]);
+                        delay(100);
                     
                     }
+                    
 
                     // Which Value is closer?
                     // go through each check, 
@@ -624,7 +734,7 @@ void loop() {
                     // this would infer that the value is now inbetween 1 and 0.33
                     // (most likely case)
                     if( (SETRPM > goldRPM[0] && SETRPM < goldRPM[1])) {
-                        RPMArray[0] = 0;
+                        
                         RPMArray[1] = goldRPM[1];
                         
                         if(goldDiff[0] < goldDiff[1]) {
@@ -646,7 +756,7 @@ void loop() {
                     //_____ Case 2 - RPM between gold values 0 and 0.33 _______
                     
                     else if( RPMinit < SETRPM && SETRPM > goldRPM[0]) {
-                        RPMArray[0] = 0;
+                        
                         RPMArray[1] = goldRPM[0];
                         if(RPMdiff < goldDiff[0]) {
                             // 0 / RPMinit is closest
@@ -682,11 +792,14 @@ void loop() {
                     }        
                 }
             }
+            
+            
+            /*
             Serial.print("RPMs should now be matching, RPM of PROP ");
             Serial.print(i);
             Serial.print(" is : ");
             Serial.println(AverageRPM(&props[i], props[i].CSN));
-            
+            */
 
 
 
@@ -697,7 +810,7 @@ void loop() {
 
 
             if(i > 0) { // dont want this running for motor 1
-                if(adjacent == 1){
+                if(diagonal == 1){
                     PWMSave = PWMVal[i];
                     Serial.println("Adjacent Propeller Phase Control will now begin.");
 
@@ -709,6 +822,9 @@ void loop() {
                     Serial.print("  with a difference from the wanted as ");
 
                     float dpd = curr_phasediff - phasediff;
+
+                    if(dpd < 0 ) dpd += 360;
+                    if(dpd > 360) dpd -= 360;
 
 
                     Serial.print(dpd);
@@ -722,15 +838,19 @@ void loop() {
                     }
 
                     //reset pwm and rpm array for grad
-                    RPMArray[0] = 0;
+                    
                     
                     PWMArray[1] = PWMVal[i];
-                    PWMArray[0] = 0;
+                    PWMArray[0] = 1000;
 
-                    float degrees_per_sec = 50 * 360 / 60;
+                    float RPMdiff = 0;
+                    RPMinit = AverageRPM(&props[i], props[i].CSN);
+                    if(RPMinit < SETRPM) RPMdiff = 30;
+                    if(RPMinit > SETRPM) RPMdiff = -30;
+
+                    float degrees_per_sec = 30 * 360 / 60;
                     
-                    if(dpd < 0 ) dpd += 360;
-                    if(dpd > 360) dpd -= 360;
+                    
 
                     float delaytime = ((dpd) / degrees_per_sec) * 1e6;
 
@@ -752,11 +872,10 @@ void loop() {
                         decrease by 100 rpm equivalent of PWM (600 degree diff per sec)
                         */
                         
-                        RPMinit = AverageRPM(&props[i], props[i].CSN);
-                        float RPMdiff = AverageRPM(&props[i], props[i].CSN) - 50;
-                        
                         PWMphase = PWMfromRPM(&props[i], props[i].CSN, props[i].CSN, RPMdiff, grad[i]);
-                        if((PWMphase - PWMSave) != 0) {
+                        PWMphase += PWMSave;
+
+                        if(fabs(PWMphase - PWMSave) > 10) {
                             motor[i].writeMicroseconds(PWMphase); // RPM for changing phase (50 less)
                             delayMicroseconds(delaytime);  // delay time needed to bring to phase
                             motor[i].writeMicroseconds(PWMSave);   // back to normal RPM
